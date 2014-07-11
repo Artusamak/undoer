@@ -1,2 +1,4 @@
 name = Undoer
+package = Undo
 core = 7.x
+dependencies[] = advancedqueue
