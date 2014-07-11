@@ -1,5 +1,8 @@
 <?php
 
+/**
+ * Implements hook_menu().
+ */
 function undoer_menu() {
   return array(
     'test' => array(
@@ -33,6 +36,9 @@ function undoer_do_magic() {
   form_execute_handlers('submit', $form, $form_state);
 }
 
+/**
+ * Implements hook_form().
+ */
 function undoer_form() {
   $form = array();
   $form['data'] = array(
@@ -47,11 +53,19 @@ function undoer_form() {
   return $form;
 }
 
+/**
+ * Form submit callback.
+ *
+ * See @undoer_form
+ */
 function undoer_form_submit($form, $form_state) {
   drupal_set_message(print_r($form_state['values'], 1), 'status', TRUE);
   watchdog('executed in', $form_state['values']['data']);
 }
 
+/**
+ * Implements hook_form_alter().
+ */
 function undoer_form_alter(&$form, &$form_state, $form_id) {
   $form_state['submit_stack'] = $form['#submit'];
   $form['#submit'] = array('undoer_extra_callback');
@@ -89,18 +103,7 @@ function undoer_advanced_queue_info() {
 
 function undoer_queue_worker($item, $end_time = FALSE) {
   $data = $item->data;
-//  $params = array(
-//    '@id' => $item->item_id,
-//    '@uid' => $data['uid'],
-//    '@time' => date('r', $data['timestamp']),
-//  );
-//  advancedqueue_log_message(format_string('The "worker" is now processing a example task number @id for user ID @uid created at @time.', $params));
 
-  // For example purposes we will return an array with detailed message
-  // for odd item IDs, and boolean for even ones.
-//  if ($item->item_id % 2) {
-//    return TRUE;
-//  }
   $form = unserialize($item->data['form']);
   $form_state = unserialize($item->data['form_state']);
   $form['#submit'] = $form_state['submit_stack'];
