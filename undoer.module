@@ -18,15 +18,16 @@ function undoer_menu() {
       'page callback' => 'undoer_magic_wand',
       'page arguments' => array('1'),
       'access arguments' => array('access content'),
-    )
+    ),
   );
 }
 
 function undoer_magic_wand($item_id) {
-
   $queue = DrupalQueue::get('undoer_queue', TRUE);
-  $queue->deleteItem($item_id);
-
+  $item = new stdClass();
+  $item->item_id = $item_id;
+  $queue->deleteItem($item);
+  return 'ok';
 }
 
 function undoer_do_magic() {
@@ -102,15 +103,14 @@ function undoer_advanced_queue_info() {
 }
 
 function undoer_queue_worker($item, $end_time = FALSE) {
-  $data = $item->data;
-
+//  $data = $item->data;
   $form = unserialize($item->data['form']);
   $form_state = unserialize($item->data['form_state']);
   $form['#submit'] = $form_state['submit_stack'];
   form_execute_handlers('submit', $form, $form_state);
 
   $queue = DrupalQueue::get('undoer_queue', TRUE);
-  $queue->releaseItem($item);
+  $queue->deleteItem($item);
 
   return array(
     'status' => ADVANCEDQUEUE_STATUS_SUCCESS,
