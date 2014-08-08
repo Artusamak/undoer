@@ -5,51 +5,52 @@
  */
 function undoer_menu() {
   return array(
-    'test' => array(
+    'undo/example_form' => array(
+      'title' => 'Example form',
       'page callback' => 'drupal_get_form',
-      'page arguments' => array('undoer_form'),
+      'page arguments' => array('undoer_example_form'),
       'access arguments' => array('access content'),
     ),
-    'do_magic' => array(
-      'page callback' => 'undoer_do_magic',
-      'access arguments' => array('access content'),
-    ),
-    'magic_wand/%' => array(
-      'page callback' => 'undoer_magic_wand',
-      'page arguments' => array('1'),
+    'undo/%' => array(
+      'title' => 'Action cancelled',
+      'page callback' => 'undoer_undo_item',
+      'page arguments' => array(1),
       'access arguments' => array('access content'),
     ),
   );
 }
 
-function undoer_magic_wand($item_id) {
+/**
+ * Menu callback to prevent an item to be processed.
+ *
+ * @param $item_id
+ *   ID of the item in the queue which is about to be processed.
+ */
+function undoer_undo_item($item_id) {
   $queue = DrupalQueue::get('undoer_queue', TRUE);
   $item = new stdClass();
   $item->item_id = $item_id;
   $queue->deleteItem($item);
-  return 'ok';
-}
-
-function undoer_do_magic() {
-  $form = unserialize($_POST['form']);
-  $form_state = unserialize($_POST['form_state']);
-  $form['#submit'] = $form_state['submit_stack'];
-  form_execute_handlers('submit', $form, $form_state);
+  return t('Your action has been correctly cancelled.');
 }
 
 /**
  * Implements hook_form().
  */
-function undoer_form() {
+function undoer_example_form() {
   $form = array();
+  $form['message'] = array(
+    '#markup' => t('When processed, this form will replace your site name in order to show you the result of Undoer.'),
+  );
   $form['data'] = array(
+    '#title' => t('Select your new site name'),
     '#type' => 'select',
-    '#options' => array('Val 1', 'Val 2'),
+    '#options' => array(t('Welcome to kitten garden!'), t('Welcome in puppies paradize!')),
     '#default_value' => 0,
   );
   $form['submit'] = array(
     '#type' => 'submit',
-    '#value' => 'Test',
+    '#value' => t('Save'),
   );
   return $form;
 }
@@ -57,25 +58,33 @@ function undoer_form() {
 /**
  * Form submit callback.
  *
- * See @undoer_form
+ * See @undoer_example_form().
  */
-function undoer_form_submit($form, $form_state) {
-  drupal_set_message(print_r($form_state['values'], 1), 'status', TRUE);
-  watchdog('executed in', $form_state['values']['data']);
+function undoer_example_form_submit($form, $form_state) {
+  watchdog('undoer log', 'Trace that the example form has been processed.');
+
+  // Update the new site name.
+  variable_set('site_name', $form['data']['#options'][$form_state['values']['data']]);
 }
 
 /**
  * Implements hook_form_alter().
  */
 function undoer_form_alter(&$form, &$form_state, $form_id) {
+  // Fetch the submit callbacks supposed to happen.
   $form_state['submit_stack'] = $form['#submit'];
-  $form['#submit'] = array('undoer_extra_callback');
+
+  // Then force the form to only pass through our callback.
+  $form['#submit'] = array('undoer_other_form_submit_callbacks_catcher');
 }
 
-function undoer_extra_callback($form, $form_state) {
+/**
+ * Submit callback storing the form structure and data.
+ */
+function undoer_other_form_submit_callbacks_catcher($form, $form_state) {
+  // Store the form in a queue item.
   $data_form = serialize($form);
   $data_form_state = serialize($form_state);
-//  form_execute_handlers('submit', $form, $form_state);
 
   $queue = DrupalQueue::get('undoer_queue', TRUE);
   $item = array(
@@ -84,7 +93,12 @@ function undoer_extra_callback($form, $form_state) {
     'form_state' => $data_form_state
   );
   $queue->createItem($item);
-//  drupal_http_request(url('do_magic', array('absolute' => TRUE)), array('method' => 'POST', 'data' => 'form='.$data_form.'&form_state='.$data_form_state, 'headers' => array('Content-Type' => 'application/x-www-form-urlencoded')));
+
+  // Display a message to let the user cancel the action.
+  // @TODO: Add a JS layer to hide the link once its processed.
+  // @TODO: Fetch the newly created item in order to be able to remove
+  // the element.
+  drupal_set_message(t('Your action will be processed in the 5 secondes, you can !cancel_link.', array('!cancel_link' => l(t('cancel your action'), 'undo/' . $item->item_id))));
 }
 
 /**
@@ -102,16 +116,22 @@ function undoer_advanced_queue_info() {
   return $items;
 }
 
+/**
+ * Advancedqueue worker processing the forms in the queue.
+ */
 function undoer_queue_worker($item, $end_time = FALSE) {
-//  $data = $item->data;
+  // Fetch the form structure and data and then process it as if
+  // the space warp never happened.
   $form = unserialize($item->data['form']);
   $form_state = unserialize($item->data['form_state']);
   $form['#submit'] = $form_state['submit_stack'];
   form_execute_handlers('submit', $form, $form_state);
 
+  // Remove the item from the queue.
   $queue = DrupalQueue::get('undoer_queue', TRUE);
   $queue->deleteItem($item);
 
+  // Turn off the light.
   return array(
     'status' => ADVANCEDQUEUE_STATUS_SUCCESS,
     'result' => 'Processed ' . $item->item_id,
